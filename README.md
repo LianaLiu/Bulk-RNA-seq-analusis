@@ -1,5 +1,5 @@
 # Bulk-RNA-seq-analysis
-This is the code we used to submit articles
+This is the code we used to submit articles.
   The R version (R version 4.0.2 (2020-06-22))is available on CRAN and https://www.r-project.org/. 
 
 Analysis of the RNA-seq of ES, pES cells, ESC-PGCLCs, pESC-PGCLCs, E12.5 PGC and E9.5 PGC.
