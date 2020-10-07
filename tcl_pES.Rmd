@@ -1,0 +1,345 @@
+---
+title: "Untitled"
+author: "LLL"
+date: "2019/7/26"
+output: html_document
+---
+```{r}
+library(data.table)
+library(pheatmap)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(tsne)
+library(DESeq2)
+library(dplyr)
+library(UpSetR)
+library(ggplot2)
+library(reshape2)
+#library(ggtech)
+library(ggpubr) 
+library(ggrepel)
+library(reshape2)
+library(FactoMineR)
+library(Rtsne)
+library(circlize)
+library(ComplexHeatmap)
+library(GetoptLong)
+library(ggtech)
+#library(topGO)
+library(enrichplot)
+library(ggplot2)
+#library(org.Hs.eg.db)#人类基因组注释相关的包
+library(DO.db)
+library(clusterProfiler)
+```
+
+```{r}
+expMatrix_tpm_tcl_pES <- read.csv("K:/R/tcl_pES/tcl/expMatrix_tpm_tcl_pES.csv", row.names=1)
+
+expMatrix_tpm_tcl_pES <- read.csv("expMatrix_tpm_tcl_pES.csv", row.names=1)
+```
+
+```{r}
+index1 <- c(3,5,9,11,15)
+#仅保留2个重复的TPM数据
+index2 <- expMatrix_tpm_tcl_pES[,-index1]
+#仅删掉PGC的TPM值
+index3 <- index2[,-(5:6)]
+index3<-index3[apply(index3, 1, var)!=0,]
+#pES和ES的TPM值
+index4 <- index3[,1:4]
+index4<-index4[apply(index4, 1, var)!=0,]
+#index3<-index3[apply(index3, 1, var)!=0,]
+
+#仅保留PGCS和pPGCs
+index5 <- index3[,c(5:8)]
+index5<-index5[apply(index5, 1, var)!=0,]
+##保留PGC,PGCS,PPGCs
+index6 <- index2[,c(5:10)]
+```
+##相关性
+```{r}
+GRP_FPKM_ALL_cor <- cor(index3)
+pheatmap(GRP_FPKM_ALL_cor,color = colorRampPalette(c("white","red"))(100), border_color = "black",display_numbers = T)
+```
+#TSNE
+```{r}
+#导入condition
+condition_tSNE <- read.csv("F:/data_analysis/tcl_PES/0726_new/condition_tSNE.csv", sep="")
+#利用TPM做tSNE
+write.csv(index3,"index3.csv")
+d <- stats::dist(t(index3))
+set.seed(0)
+tsne_out <- Rtsne(d, is_distance=TRUE, perplexity=1, verbose = TRUE)
+tsne<-tsne_out$Y
+condition_tSNE <- read.csv("F:/data_analysis/tcl_PES/0726_new/condition_tSNE.csv", sep="")
+row.names(tsne)<-colnames(index3)
+tsne<-as.data.frame(tsne)
+tsne$condition <- condition_tSNE$Condition
+require(ggplot2)
+ggplot(tsne,aes(x=tsne$V1,y=tsne$V2))+
+  geom_point(aes(size=5,color=tsne$condition))+
+  theme_classic()+
+  geom_text(aes(label=tsne$condition),size=8)+
+  theme(text = element_text(size = 10))
+```
+#热图--服务器
+```{r}
+pdf("ES_PES_pheatmap.pdf",width = 12,height = 12)
+pheatmap(index3,color = colorRampPalette(c("navy","blue","white","#E37F02","red"))(20), cluster_rows = T, scale = "row", border_color = F, show_rownames = F)
+dev.off()
+```
+
+```{r}
+pluritency_genes <- read.table("F:/data_analysis/tcl_PES/0726_new/pluritency_genes.txt", quote="\"", comment.char="", stringsAsFactors=FALSE)
+meiotic_cell <- read.table("K:/R/tcl_pES/tcl/new/es_PES/meiotic_cell.txt", quote="\"", comment.char="")
+meiotic_cell_genes <- as.data.frame(gsym.id_pmid$SYMBOL)
+maternal <- read.csv("K:/R/tcl_pES/tcl/maternal.csv", sep="", stringsAsFactors=FALSE)
+Paternal <- read.csv("K:/R/tcl_pES/tcl/Paternal.csv", sep="")
+```
+
+```{r}
+gene_lists <- get_gene_lists(pluritency_genes$V1)
+gene_lists <- na.omit(gene_lists)
+
+```
+##小提琴图
+```{r}
+liu_data<-melt(gene_lists,id.vars = 'name')
+my_comparisons <- list(c("ES", "pES"))
+ggviolin(liu_data, x="variable", y="log10(liu_data$value)", fill = "variable",add = "boxplot", add.params = list(fill="white"))+
+ #增加了jitter点，点shape由dose映射
+theme_tech(theme="Airbnb") +
+  scale_fill_tech(theme="airbnb") +
+  ggtitle("Meiotic cell cycle")+
+  stat_compare_means(comparisons = my_comparisons)+   #label这里表示选择显著性标记（星号）
+ stat_compare_means(label.y = 3)
+```
+
+##箱线图
+```{r}
+p <- ggboxplot(liu_data, x="variable", y="log10(liu_data$value)", fill = "variable")+
+ #增加了jitter点，点shape由dose映射
+ theme_tech(theme="Airbnb") +
+   scale_fill_tech(theme="airbnb") +
+   ggtitle("Maternal genes")
+p+stat_compare_means(comparisons = my_comparisons)+    #不同组间的比较
+     stat_compare_means(label.y = 4)
+```
+
+```{r}
+get_pheatmap_ES_Pes(meiotic_cell)
+```
+
+```{r}
+earlyPGC_genes <- read.table("K:/R/tcl_pES/tcl/gene_lists/earlyPGC_genes.txt", quote="\"", comment.char="", stringsAsFactors=FALSE)
+ohta_mm10_RPM_v1 <- read.delim("K:/R/tcl_pES/tcl/ohta_mm10_RPM_v1.txt")
+#name
+rownames(ohta_mm10_RPM_v1) <- ohta_mm10_RPM_v1$Name
+#delete 1-2
+ohta_mm10_RPM_v1 <- ohta_mm10_RPM_v1[,-(1:2)]
+#仅保留E9.5和E12.5
+index_e9.5 <- ohta_mm10_RPM_v1[,c(7:8,11:12)]
+#匹配early PGC genes
+index_e9.5_early_PGC_genes <- index_e9.5[match(earlyPGC_genes$V1,row.names(index_e9.5)),]
+
+```
+
+```{r}
+##提取基因---E9.5/E12.5<1.5
+diff_gene_e9.5 <- subset(index_e9.5_early_PGC_genes, (E9.5_PGC_1+E9.5_PGC_2)/ (E12.5_F_Germ_1+E12.5_F_Germ_2)<1.46)
+diff_gene_e9.5_names <- as.data.frame(row.names(diff_gene_e9.5))
+colnames(diff_gene_e9.5_names) <- c("V1")
+###置信区域
+  diff_gene_e9.5$E9.5_PGC <- (diff_gene_e9.5$E9.5_PGC_1+diff_gene_e9.5$E9.5_PGC_2)/2
+  diff_gene_e9.5$E12.5_F <- (diff_gene_e9.5$E12.5_F_Germ_1+diff_gene_e9.5$E12.5_F_Germ_2)/2
+  diff_gene_e9.5 <- diff_gene_e9.5[,c(5:6)]
+```
+##figure3
+```{r}
+#gene_list_violin
+q<-ggplot(diff_gene_e9.5,aes(x=log(E9.5_PGC+1,2),y=log(E12.5_F+1,2)))+stat_smooth(method = lm,level = 0.99)+
+  geom_point(alpha=0.4)+
+  ggtitle("E9.5/E12.5")
+q
+```
+#####筛选后PGC/PPGC/PGCs
+```{r}
+gene_early_PGC_genes <- index6[match(diff_gene_e9.5_names$V1,row.names(index6)),]
+gene_early_PGC_genes <- na.omit(gene_early_PGC_genes)
+pheatmap(gene_early_PGC_genes,color = colorRampPalette(c("navy","blue","white","#E37F02","red"))(20), cluster_rows = T, scale = "row", border_color = F, show_rownames = T)
+```
+
+```{r}
+gene_early_PGC_genes$name <- rownames(gene_early_PGC_genes)
+```
+
+```{r}
+  gene_early_PGC_genes$PGC <- (gene_early_PGC_genes$PGC1+gene_early_PGC_genes$PGC1)/2
+  gene_early_PGC_genes$pES_PGCs <- (gene_early_PGC_genes$pPGCs1+gene_early_PGC_genes$pPGCs2)/2
+  gene_early_PGC_genes$ESC_PGC <- (gene_early_PGC_genes$PGCS1+gene_early_PGC_genes$PGCS1)/2
+  gene_early_PGC_genes_1 <- gene_early_PGC_genes[,c(7:10)]
+
+```
+####ESC_PGC_小提琴图
+```{r}
+liu_data<-melt(gene_early_PGC_genes_1,id.vars = 'name')
+my_comparisons <- list(c("PGC", "pES_PGCs"),c("pES_PGCs","ESC_PGC"),c("PGC","ESC_PGC"))
+ggviolin(liu_data, x="variable", y="log10(liu_data$value)", fill = "variable",add = "boxplot", add.params = list(fill="white"))+
+ #增加了jitter点，点shape由dose映射
+theme_tech(theme="Airbnb") +
+  scale_fill_tech(theme="airbnb") +
+  ggtitle("ESC_PGC")+
+  stat_compare_means(comparisons = my_comparisons)+   #label这里表示选择显著性标记（星号）
+ stat_compare_means(label.y = 3)
+```
+
+```{r}
+tmp <- PGC_get_gene_lists(Paternal$Paternal)
+tmp <- na.omit(tmp)
+```
+
+```{r}
+liu_data<-melt(tmp,id.vars = 'name')
+my_comparisons <- list(c("PGC", "pES_PGCs"),c("pES_PGCs","ESC_PGC"),c("PGC","ESC_PGC"))
+ggviolin(liu_data, x="variable", y="log10(liu_data$value)", fill = "variable",add = "boxplot", add.params = list(fill="white"))+
+ #增加了jitter点，点shape由dose映射
+theme_tech(theme="Airbnb") +
+  scale_fill_tech(theme="airbnb") +
+  ggtitle("Paternal_genes")+
+  stat_compare_means(comparisons = my_comparisons)+   #label这里表示选择显著性标记（星号）
+ stat_compare_means(label.y = 3)
+```
+#index4
+```{r}
+pheat_1 <- read.table("K:/R/tcl_pES/tcl/pheat_1.csv", quote="\"", comment.char="")
+ES_pES_pheat_1 <- index4[match(pheat_1$V1,row.names(index4)),]
+ES_pES_pheat_1 <- na.omit(ES_pES_pheat_1)
+pheatmap(ES_pES_pheat_1,color = colorRampPalette(c("navy","blue","white","#E37F02","red"))(20), cluster_rows = T, scale = "row", border_color = F, show_rownames = T)
+write.csv(ES_pES_pheat_1,"maternal_pater_pes.csv")
+```
+#ES_pES_paternal  
+```{r}
+ES_pES_paternal <- index4[match(maternal_paternal$Genes,row.names(index4)),]
+ES_pES_paternal <- na.omit(ES_pES_paternal)
+pheatmap(ES_pES_paternal,color = colorRampPalette(c("navy","blue","white","#E37F02","red"))(20), cluster_rows = T, scale = "row", border_color = F, show_rownames = T)
+
+ES_pES_paternal$Genes <- rownames(ES_pES_paternal)
+
+index_es_maternal <- merge(maternal_paternal,ES_pES_paternal,by="Genes")
+write.csv(index_es_maternal,"index_es_maternal.csv")
+
+index_9.5_paternal <- merge(maternal_paternal_E9.5,maternal_paternal,by="Genes")
+
+write.csv(index_9.5_paternal,"index_9.5_paternal.csv")
+
+```
+
+##index_e9.5
+```{r}
+maternal_paternal <- read.csv("F:/data_analysis/tcl_PES/0726_new/maternal_paternal.csv")
+maternal_paternal_E9.5 <- index_e9.5[match(maternal_paternal$Genes,row.names(index_e9.5)),]
+maternal_paternal_E9.5 <- na.omit(maternal_paternal_E9.5)
+#增加一列Gene用于合并数据
+maternal_paternal_E9.5$Genes <- row.names(maternal_paternal_E9.5)
+#取平均值
+maternal_paternal_E9.5$E9.5 <- (maternal_paternal_E9.5$E9.5_PGC_1+maternal_paternal_E9.5$E9.5_PGC_2)/2
+```
+
+```{r}
+get_pheatmap_pl_Pes(pluritency_genes$V1)
+```
+
+```{r}
+index3_1<-index3[apply(index3, 1, mean)>2,]
+index_log2_tpm1 <- log(index3_1+1,2)
+pheatmap(index3_1,color = colorRampPalette(c("navy","blue","white","#E37F02","red"))(20), cluster_rows = T, scale = "row", border_color = F, show_rownames = F)
+```
+
+```{r}
+index_chrx <- index3
+index_chrx$gene_name <- rownames(index_chrx)
+ensemble_gene <- read.csv("I:/nova_gene/ensemble_gene.csv", row.names=1, stringsAsFactors=FALSE)
+index_ensemble_gene <- ensemble_gene[,1:2]
+index_chrx_2 <- merge(index_ensemble_gene,index_chrx,by='gene_name')
+tmp_chrx <- index_chrx_2[grep("X",index_chrx_2$gene_chr),]
+write.csv(tmp_chrx,"tmp_chrx.csv")
+```
+
+```{r}
+chrx <- tmp_chrx[,-2]
+rownames(chrx) <- chrx$gene_name
+chrx <- chrx[,-1]
+
+#chrx1<-chrx[apply(chrx, 1, sum)>10,]
+chrx_ES <- chrx[,1:4]
+chrx_ES<-chrx_ES[apply(chrx_ES, 1, var)!=0,]
+pheatmap(chrx_ES_high,color = colorRampPalette(c("navy","blue","white","#E37F02","red"))(20), cluster_rows = T, scale = "row", border_color = F, show_rownames = F)
+
+#取平均值
+chrx_ES$ES <- (chrx_ES$ES1+chrx_ES$ES2)/2
+chrx_ES$pES <- (chrx_ES$pES1+chrx_ES$pES3)/2
+#平均值+name
+chrx_ES$name <- rownames(chrx_ES)
+chrxES2 <- chrx_ES[,5:7]
+```
+
+```{r}
+chrx_ES_high <- subset(chrx_ES, 
+                           (chrx_ES$ES1)/(chrx_ES$ES2) <2 
+                           &(chrx_ES$pES1)/(chrx_ES$pES3) <2)
+pheatmap(chrx_ES,color = colorRampPalette(c("navy","blue","white","#E37F02","red"))(20), cluster_rows = T, scale = "row",border_color = F, show_rownames = F)
+```
+
+```{r}
+chrxES2_me = melt(chrxES2,value.var = "name")
+
+ ggboxplot(chrxES2_me, x="variable", y="log10(chrxES2_me$value)", fill = "variable")+
+ #增加了jitter点，点shape由dose映射
+ theme_tech(theme="Airbnb") +
+   scale_fill_tech(theme="airbnb") +
+   ggtitle("chrX genes")
+p+stat_compare_means(comparisons = my_comparisons)+    #不同组间的比较
+     stat_compare_means(label.y = 4)
+```
+
+```{r}
+up_down_list <- read.csv("F:/data_analysis/tcl_PES/0726_new/tcl_pES_0726/0730/CHRX/up_down_list.csv")
+index_list <- merge(up_down_list,ensemble_gene,by='gene_name')
+index_list <- index_list[,1:3]
+index_list_me = melt(index_list,value.var = "Diff")
+write.csv(index_list_me,"index_list_me.csv")
+```
+
+```{r}
+gene_number <- read.csv("F:/data_analysis/tcl_PES/0726_new/tcl_pES_0726/0730/CHRX/gene_number.csv",stringsAsFactors = F)
+
+ggplot(gene_number,aes(gene_number$gene_chr,weight=gene_number$Number,fill=Groups))+
+  geom_bar(position = "dodge")+
+ theme_tech(theme="Airbnb") +
+   scale_fill_tech(theme="airbnb") +
+   ggtitle("Gene Number")
+
+#调整X轴的顺序
+table(gene_number$gene_chr)
+gene_number$gene_chr <- factor(gene_number$gene_chr,levels=paste0("chr",1:21),ordered = TRUE)
+ggplot(gene_number,aes(gene_number$gene_chr,weight=gene_number$Number,fill=Groups))+
+  geom_bar(position = "dodge")+
+ theme_tech(theme="Airbnb") +
+   scale_fill_tech(theme="airbnb") +
+   ggtitle("Gene Number")+
+theme(axis.title.x=element_text(face="italic"),
+        axis.text.x = element_text(angle=50,vjust = 0.5))
+```
+#差异X热图
+```{r}
+index_list_X <- index_list[grep("X",index_list$gene_chr),]
+index_list_X_list <- merge(index_chrx,index_list_X,by='gene_name')
+rownames(index_list_X_list) <- index_list_X_list$gene_name
+index_list_X_list <- index_list_X_list[,2:5]
+index_list_X_list <- index_list_X_list[apply(index_list_X_list, 1, var)!=0,]
+pheatmap(index_list_X_list,color = colorRampPalette(c("navy","blue","white","#E37F02","red"))(20), cluster_rows = T, scale = "row",
+         border_color = F, show_rownames = T)
+write.csv(index_list_X_list,"index_list_X_list.csv")
+```
+
