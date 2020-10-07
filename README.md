@@ -1,12 +1,12 @@
 # Bulk-RNA-seq-analysis
 This is the code we used to submit articles.
 <h3>Installation
-      ------
+      
      
-           Hisat2 :https://daehwankimlab.github.io/hisat2/
-            Deseq2:http://www.bioconductor.org/packages/release/bioc/html/DESeq2.html
-            TrimGalore: https://github.com/FelixKrueger/TrimGalore
-              featureCounts:http://subread.sourceforge.net/
+                 Hisat2 :https://daehwankimlab.github.io/hisat2/
+                  Deseq2:http://www.bioconductor.org/packages/release/bioc/html/DESeq2.html
+                  TrimGalore: https://github.com/FelixKrueger/TrimGalore
+                    featureCounts:http://subread.sourceforge.net/
 
 Some system/package requirements:
 
